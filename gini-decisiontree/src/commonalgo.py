@@ -6,14 +6,26 @@
 '''
 from __future__ import division
 from kmean import kmean
+from copy import copy
+
+class Root:
+     __slots__ = ('name', 'attrib', 'attribtypes', 'child', 'parent')
+     def __init__(self, name, attr, types, childlist, p):
+         self.name = name
+         self.child = childlist
+         self.attrib = attr
+         self.attribtypes = types
+         self.parent = p
+
+GLOBAL_NODES = []
 
 '''
 the classify attribute is ordinal, need to be classified first
 '''
 def classifyDataset(pt, ring):
-    if (ring > 0 and ring <= 10):
+    if ring > 0 and ring <= 10:
         pt[0] = pt[0] + 1
-    elif (ring > 10 and ring <= 20):
+    elif ring > 10 and ring <= 20:
         pt[1] = pt[1] + 1
     else:
         pt[2] = pt[2] + 1
@@ -22,10 +34,12 @@ def classifyDataset(pt, ring):
 similar with entropy, much easier to calculate
 '''
 def calcGini(branchset):
-
     ## first, calc classification percent
-
     datacount = len(branchset)
+    
+    if datacount == 0:
+        return 0.0
+    
     pt = [0,0,0]
     for entry in branchset:
         ring = int(entry[-1])
@@ -37,10 +51,30 @@ def calcGini(branchset):
     
     return round(gini, 3)
 
+def calcNominalGain(dataset, dimenid, nominal, tmpDict):
+    baseGini = calcGini(dataset)
+    baseCount = float(len(dataset))
+    subSumGini = 0.0
+    
+    subDatasetList = []
+    for n in nominal:
+        subDataset = []
+        for d in dataset:
+            v = copy(d)
+            del(v[dimenid])
+            if d[dimenid] == n:
+                subDataset.append(v)
+                
+        subDatasetList.append(subDataset)
+        prcntOf = len(subDataset) / baseCount
+        subSumGini += prcntOf * calcGini(subDataset)
+    
+    tmpDict[dimenid] = subDatasetList
+    return round(baseGini - subSumGini, 3)
 '''
 calcuate info gain, bigger the better
 '''
-def calcGain(dataset, dimenid):
+def calcContinuousGain(dataset, dimenid, tmpDict):
     ## firstly, calculate parent gini (base gini)
     baseGini = calcGini(dataset)
     baseCount = float(len(dataset))
@@ -51,14 +85,15 @@ def calcGain(dataset, dimenid):
     retValues = kmean(dataset, dimenid, 3)
     subSumGini = 0.0
     
+    subDatasetList = []
     for g in retValues[0]:
         groupedDataset = getGroupedDateset(retValues[1], g.group)
         prcntOf = len(groupedDataset) / baseCount
-        print(dimenid, g.group, len(groupedDataset))
         subSumGini += prcntOf * calcGini(groupedDataset)
-        
+        subDatasetList.append(groupedDataset)
     
-    return baseGini - subSumGini
+    tmpDict[dimenid] = subDatasetList
+    return round(baseGini - subSumGini, 3)
 
 '''
 get k-mean grouped dataset
@@ -70,23 +105,78 @@ def getGroupedDateset(points, group):
             retList.append(p.v)
     return retList
 
-def createdNode():
-    return
-
-def find_best_split(dataset):
-    bestGain = 0.0
-    bestGainDimenID = 1
-    for dimenid in range(1, len(dataset[0])-1):
-        subGain = calcGain(dataset, dimenid)
+def createdNode(dimenid, children, attrib, types, parentNode):
+    name = attrib[dimenid]
+    del (attrib[dimenid])
+    del (types[dimenid])
         
-        if subGain > bestGain:
-            bestGain = subGain
-            bestGainDimenID = dimenid
-            
-    print (bestGain, bestGainDimenID)
+    node = Root(name, attrib, types, children, parentNode)
+    return node
+
+def find_best_split(dataset, types):
+    tempDict = {}
+    bestGain = 0.0
+    bestGainDimenID = 0
+    
+    for dimenid, t in enumerate(types):
+        if t == 'n':
+            ## dimen is a classify attribute
+            subGain = calcNominalGain(dataset, dimenid, ['M','F','I'], tempDict)
+#             print (subGain)
+            if subGain > bestGain:
+                bestGain = subGain
+                bestGainDimenID = dimenid
+        elif t == 'c':
+            ## dimens is continuous attribute
+            subGain = calcContinuousGain(dataset, dimenid, tempDict)
+#             print (subGain)
+            if subGain > bestGain:
+                bestGain = subGain
+                bestGainDimenID = dimenid
+        else:
+            if len(dataset[0]) > 1:
+                break
+            else:
+                bestGain = 0.0
+                bestGainDimenID = dimenid
+
+    if bestGain != 0.0:
+        indics = tempDict.keys()
+        for indx in indics:
+            if indx != bestGainDimenID:
+                tempDict.pop(indx)
+    else:
+#         print ('best split:')
+#         print (bestGain, bestGainDimenID, len(dataset))
+        return (bestGain, bestGainDimenID, dataset)   
+          
+#     print ('best split:')
+#     print (bestGain, bestGainDimenID, len(tempDict[bestGainDimenID]))
+    return (bestGain, bestGainDimenID, tempDict[bestGainDimenID])
 
 def classify():
     return
 
-def stopping_cond():
-    return
+def stopping_cond(dataset):
+    if len(dataset) == 0 or len(dataset[0]) == 2:
+        return True
+    else:
+        return False
+
+def treeGrowth(dataset, attribset, attribtype, parentN):
+    if (stopping_cond(dataset)):
+        return
+
+    b = find_best_split(dataset, attribtype)
+    node = createdNode(b[1], b[2], copy(attribset), copy(attribtype), parentN)
+#     print (node.name)
+#     print ('\n')
+    GLOBAL_NODES.append(node)
+    if b[0] == 0.0:
+        return
+
+    for subDataset in node.child:
+        treeGrowth(subDataset, node.attrib, node.attribtypes, node)
+
+
+    

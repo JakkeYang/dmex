@@ -11,6 +11,7 @@ from collections import namedtuple
 from random import random, choice
 from copy import copy
 from fileutils import getAbaloneDataset
+import matplotlib.pyplot as plt
  
 try:
     import psyco
@@ -26,6 +27,7 @@ class Point:
     __slots__ = ["x", "v", "group"]
     def __init__(self, x=0.0, v=None, group=0):
         self.x, self.group = x, group
+        self.v = v
  
  
 def generate_points(dataset, dimenid):
@@ -34,7 +36,8 @@ def generate_points(dataset, dimenid):
     # note: this is not a uniform 2-d distribution
     for i, p in enumerate(points):
         p.x = float(dataset[i][dimenid])
-        p.v = dataset[i]
+        p.v = copy(dataset[i])
+        del(p.v[dimenid])
     return points
  
  
@@ -111,8 +114,10 @@ def lloyd(points, nclusters):
         for p in points:
             cluster_centers[p.group].group += 1
             cluster_centers[p.group].x += p.x
- 
+            
         for cc in cluster_centers:
+            if cc.group == 0:
+                continue
             cc.x /= cc.group
  
         # find closest centroid of each PointPtr
@@ -135,5 +140,20 @@ def lloyd(points, nclusters):
 def kmean(dataset, dimenid, k):
     points = generate_points(dataset, dimenid)
     cluster_centers = lloyd(points, k)
-    return (cluster_centers, points)
+    return (sorted(cluster_centers), points)
+    
+def testGraph():
+    dataset = getAbaloneDataset()
+    color = ('r','g','b')
+    points = generate_points(dataset, 7)
+    cluster_centers = lloyd(points, 3)
+    
+    ## draw
+    axes = plt.subplot(111)
+    for p in points:
+        axes.scatter(p.x, 3.0, s=20, c=color[p.group])
+        
+    plt.show()
+    
+#testGraph()
     
